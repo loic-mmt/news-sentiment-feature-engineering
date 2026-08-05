@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
 
@@ -21,11 +22,15 @@ SENTIMENT_COLORS: dict[str, str] = {
 
 def _get_ax(ax: Axes | None, *, figsize: tuple[float, float]) -> Axes:
     """Return the supplied axis or create a new one."""
-    # TODO 1: si ax n'est pas None, vérifier isinstance(ax, Axes) puis le retourner.
-    # TODO 2: sinon importer matplotlib.pyplot localement.
-    # TODO 3: créer _, ax = plt.subplots(figsize=figsize) puis retourner ax.
-    # TODO 4: ne jamais changer le backend Matplotlib dans le code de la librairie.
-    raise NotImplementedError
+    if ax is not None:
+        if not isinstance(ax, Axes):
+            raise TypeError(f"ax must be a matplotlib Axes, got {type(ax).__name__}")
+        return ax
+
+    import matplotlib.pyplot as plt
+
+    _, ax = plt.subplots(figsize=figsize)
+    return ax
 
 
 def plot_labels(
@@ -35,17 +40,28 @@ def plot_labels(
     ax: Axes | None = None,
 ) -> Axes:
     """Plot label counts, or proportions, in stable sentiment order."""
-    # TODO 1: appeler validate_prediction_frame(predictions).
-    # TODO 2: calculer les effectifs et reindexer avec SENTIMENT_LABELS pour
-    #         afficher également les classes absentes avec une barre à zéro.
-    # TODO 3: si proportions=True, diviser par len(predictions).
-    # TODO 4: récupérer ax avec _get_ax(ax, figsize=(7, 4)).
-    # TODO 5: tracer une barre par classe avec SENTIMENT_COLORS dans l'ordre stable.
-    # TODO 6: définir titre, xlabel="Sentiment" et ylabel selon counts/proportions.
-    # TODO 7: optionnel MVP utile : annoter chaque barre avec sa valeur lisible.
-    # TODO 8: retourner ax sans appeler tight_layout, show ou savefig ; l'appelant
-    #         conserve le contrôle de la figure complète.
-    raise NotImplementedError
+    validate_prediction_frame(predictions)
+    if not isinstance(proportions, bool):
+        raise TypeError("proportions must be a boolean")
+
+    counts = predictions["label"].value_counts().reindex(
+        SENTIMENT_LABELS,
+        fill_value=0,
+    )
+    values = counts.to_numpy(dtype=float)
+    if proportions:
+        values = values / len(predictions)
+
+    ax = _get_ax(ax, figsize=(7, 4))
+    ax.bar(
+        SENTIMENT_LABELS,
+        values,
+        color=[SENTIMENT_COLORS[label] for label in SENTIMENT_LABELS],
+    )
+    ax.set_title("Sentiment label distribution")
+    ax.set_xlabel("Sentiment")
+    ax.set_ylabel("Proportion" if proportions else "Count")
+    return ax
 
 
 def plot_score_distribution(
@@ -55,14 +71,27 @@ def plot_score_distribution(
     ax: Axes | None = None,
 ) -> Axes:
     """Plot a histogram of ``sentiment_score`` with a zero reference line."""
-    # TODO 1: appeler validate_prediction_frame(predictions).
-    # TODO 2: rejeter bool et valider bins comme entier >= 1.
-    # TODO 3: récupérer ax avec _get_ax(ax, figsize=(8, 4)).
-    # TODO 4: tracer ax.hist(sentiment_score, bins=bins, range=(-1, 1), ...).
-    # TODO 5: tracer ax.axvline(0, ...) pour séparer polarité négative/positive.
-    # TODO 6: fixer xlim(-1, 1), titre et noms des axes.
-    # TODO 7: retourner ax sans afficher ni enregistrer la figure.
-    raise NotImplementedError
+    validate_prediction_frame(predictions)
+    if isinstance(bins, bool) or not isinstance(bins, int):
+        raise TypeError("bins must be an integer")
+    if bins < 1:
+        raise ValueError("bins must be greater than or equal to 1")
+
+    ax = _get_ax(ax, figsize=(8, 4))
+    ax.hist(
+        predictions["sentiment_score"].to_numpy(dtype=float),
+        bins=bins,
+        range=(-1.0, 1.0),
+        color="#4C72B0",
+        alpha=0.8,
+        edgecolor="white",
+    )
+    ax.axvline(0.0, color="black", linestyle="--", linewidth=1.0)
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_title("Sentiment score distribution")
+    ax.set_xlabel("Sentiment score")
+    ax.set_ylabel("Count")
+    return ax
 
 
 def plot_timeline(
@@ -73,21 +102,50 @@ def plot_timeline(
     ax: Axes | None = None,
 ) -> Axes:
     """Plot mean sentiment score resampled over time."""
-    # TODO 1: appeler validate_prediction_frame(predictions).
-    # TODO 2: vérifier que date_col est une chaîne non vide et existe dans le frame.
-    # TODO 3: travailler sur predictions[[date_col, "sentiment_score"]].copy()
-    #         pour ne jamais modifier les données de l'appelant.
-    # TODO 4: convertir avec pd.to_datetime(..., errors="coerce", utc=True) ;
-    #         lever ValueError en indiquant le nombre de dates non convertibles.
-    # TODO 5: valider freq en tentant le resample et transformer l'erreur Pandas en
-    #         ValueError lisible (exemples documentés : D, W, ME).
-    # TODO 6: trier, placer les dates en index, puis calculer la moyenne du score
-    #         par période ; supprimer seulement les périodes sans observation.
-    # TODO 7: récupérer ax avec _get_ax(ax, figsize=(10, 4)), tracer la série et
-    #         ajouter une ligne horizontale à zéro.
-    # TODO 8: définir titre, xlabel="Date", ylabel="Mean sentiment score".
-    # TODO 9: retourner ax ; ne pas appeler plt.show() ni modifier predictions.
-    raise NotImplementedError
+    validate_prediction_frame(predictions)
+    if not isinstance(date_col, str):
+        raise TypeError("date_col must be a string")
+    if not date_col.strip():
+        raise ValueError("date_col must not be empty or blank")
+    if date_col not in predictions.columns:
+        raise ValueError(f"date column {date_col!r} is missing from predictions")
+    if not isinstance(freq, str):
+        raise TypeError("freq must be a string")
+    if not freq.strip():
+        raise ValueError("freq must not be empty or blank")
+
+    timeline = predictions[[date_col, "sentiment_score"]].copy()
+    converted_dates = pd.to_datetime(timeline[date_col], errors="coerce", utc=True)
+    invalid_date_count = int(converted_dates.isna().sum())
+    if invalid_date_count:
+        raise ValueError(
+            f"date column {date_col!r} contains {invalid_date_count} invalid value(s)"
+        )
+    timeline[date_col] = converted_dates
+
+    try:
+        aggregated = (
+            timeline.sort_values(date_col)
+            .set_index(date_col)["sentiment_score"]
+            .resample(freq.strip())
+            .mean()
+            .dropna()
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid resampling frequency {freq!r}") from exc
+
+    ax = _get_ax(ax, figsize=(10, 4))
+    ax.plot(
+        aggregated.index,
+        aggregated.to_numpy(dtype=float),
+        color="#4C72B0",
+        linewidth=1.5,
+    )
+    ax.axhline(0.0, color="black", linestyle="--", linewidth=1.0)
+    ax.set_title("Mean sentiment over time")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Mean sentiment score")
+    return ax
 
 
 def plot_confusion_matrix(
@@ -97,18 +155,58 @@ def plot_confusion_matrix(
     ax: Axes | None = None,
 ) -> Axes:
     """Plot raw counts or row-normalized values from an evaluation report."""
-    # TODO 1: vérifier isinstance(report, EvaluationReport).
-    # TODO 2: convertir report.confusion_matrix en array numérique sans modifier
-    #         l'original, puis vérifier shape == (len(report.labels),) * 2.
-    # TODO 3: rejeter NaN, infinis et valeurs négatives.
-    # TODO 4: si normalize=True, diviser chaque ligne par sa somme avec np.divide
-    #         et where=row_sum != 0 pour gérer une vraie classe absente.
-    # TODO 5: récupérer ax avec _get_ax(ax, figsize=(6, 5)).
-    # TODO 6: dessiner avec ax.imshow ; ajouter une colorbar via ax.figure.colorbar.
-    # TODO 7: poser les ticks/labels dans report.labels, avec axe x=Predicted et
-    #         axe y=True.
-    # TODO 8: annoter chaque cellule en entier ou en .2f selon normalize ; choisir
-    #         une couleur de texte lisible selon la valeur de la cellule.
-    # TODO 9: retourner ax sans show/savefig. Voir les matrices du script
-    #         course/03_sentiment_evolution.py pour le résultat visuel attendu.
-    raise NotImplementedError
+    if not isinstance(report, EvaluationReport):
+        raise TypeError("report must be an EvaluationReport")
+    if not isinstance(normalize, bool):
+        raise TypeError("normalize must be a boolean")
+
+    try:
+        matrix = np.array(report.confusion_matrix, dtype=float, copy=True)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("confusion matrix must contain numeric values") from exc
+    expected_shape = (len(report.labels), len(report.labels))
+    if matrix.shape != expected_shape:
+        raise ValueError(
+            f"confusion matrix must have shape {expected_shape}, got {matrix.shape}"
+        )
+    if not np.isfinite(matrix).all():
+        raise ValueError("confusion matrix must contain only finite values")
+    if (matrix < 0).any():
+        raise ValueError("confusion matrix must not contain negative values")
+
+    if normalize:
+        row_sums = matrix.sum(axis=1, keepdims=True)
+        matrix = np.divide(
+            matrix,
+            row_sums,
+            out=np.zeros_like(matrix),
+            where=row_sums != 0,
+        )
+
+    ax = _get_ax(ax, figsize=(6, 5))
+    image = ax.imshow(matrix, cmap="Blues", vmin=0.0, vmax=1.0 if normalize else None)
+    ax.figure.colorbar(image, ax=ax)
+    positions = range(len(report.labels))
+    ax.set_xticks(positions)
+    ax.set_yticks(positions)
+    ax.set_xticklabels(report.labels)
+    ax.set_yticklabels(report.labels)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    ax.set_title("Normalized confusion matrix" if normalize else "Confusion matrix")
+
+    threshold = float(matrix.max()) / 2.0 if matrix.size else 0.0
+    for row_index in range(matrix.shape[0]):
+        for column_index in range(matrix.shape[1]):
+            value = float(matrix[row_index, column_index])
+            text = f"{value:.2f}" if normalize else f"{value:g}"
+            ax.text(
+                column_index,
+                row_index,
+                text,
+                ha="center",
+                va="center",
+                color="white" if value > threshold else "black",
+            )
+
+    return ax
