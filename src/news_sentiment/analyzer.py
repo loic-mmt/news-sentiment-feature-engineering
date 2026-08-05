@@ -61,7 +61,25 @@ class SentimentAnalyzer:
         batch_size: int = 32,
         max_length: int = 512,
     ) -> None:
-        self.model_name = model_name
+        if not isinstance(model_name, str):
+            raise TypeError(
+                f"model_name must be a string, got {type(model_name).__name__}"
+            )
+        normalized_model_name = model_name.strip()
+        if not normalized_model_name:
+            raise ValueError("model_name must not be empty or blank")
+
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+            raise TypeError("batch_size must be an integer")
+        if batch_size < 1:
+            raise ValueError("batch_size must be greater than or equal to 1")
+
+        if isinstance(max_length, bool) or not isinstance(max_length, int):
+            raise TypeError("max_length must be an integer")
+        if max_length < 1:
+            raise ValueError("max_length must be greater than or equal to 1")
+
+        self.model_name = normalized_model_name
         self.device = device
         self.batch_size = batch_size
         self.max_length = max_length
@@ -69,23 +87,6 @@ class SentimentAnalyzer:
         # Kept untyped because the concrete Transformers classes depend on the
         # selected checkpoint.
         self._classifier: Any | None = None
-
-        # TODO 1: refuser un model_name vide ou composé uniquement d'espaces.
-        self.model_name.strip()
-        if not self.model_name:
-            raise ValueError("model_name cannot be composed of only spaces.")
-        # TODO 2: vérifier batch_size >= 1 et max_length >= 1 avec ValueError.
-        if self.batch_size <= 1 or self.max_length <= 1:
-            raise ValueError("batch_size and max_length must be more than 1.")
-        # TODO 3: accepter seulement device=None, un entier, "cpu", "cuda" ou
-        #         "cuda:<index>" ; produire un message clair sinon.
-        # La validation dépend de l'état de CUDA et est centralisée dans
-        # _load_classifier afin de ne pas maintenir deux règles différentes.
-        # TODO 4: choisir entre chargement immédiat et chargement paresseux.
-        #         Pour respecter PLAN.md, préférer le chargement immédiat ici.
-        # TODO 5: charger une seule fois et conserver le pipeline dans
-        #         self._classifier ; ne jamais le recréer dans predict().
-        # self._classifier = self._load_classifier()
         self._classifier = self._load_classifier()
 
     def _load_classifier(self) -> Any:
@@ -437,8 +438,6 @@ class SentimentAnalyzer:
         confidence_threshold: float = 0.60,
     ) -> SentimentSummary:
         """Return descriptive statistics for a prediction DataFrame."""
-        # TODO (après stats.py): garder cette méthode comme simple façade ; ne
-        # pas dupliquer ici la validation ou les calculs statistiques.
         from .stats import summarize
 
         return summarize(predictions, confidence_threshold=confidence_threshold)
@@ -446,10 +445,9 @@ class SentimentAnalyzer:
     def evaluate(
         self,
         predictions: pd.DataFrame,
-        y_true: Sequence[str],
+        y_true: Iterable[str],
     ) -> EvaluationReport:
         """Evaluate a prediction DataFrame against known labels."""
-        # TODO (après stats.py): garder cette méthode comme simple façade.
         from .stats import evaluate
 
         return evaluate(predictions, y_true)
@@ -462,7 +460,6 @@ class SentimentAnalyzer:
         ax: Axes | None = None,
     ) -> Axes:
         """Plot prediction counts or proportions by label."""
-        # TODO (après plots.py): ne conserver ici aucun code Matplotlib.
         from .plots import plot_labels
 
         return plot_labels(predictions, proportions=proportions, ax=ax)
@@ -475,7 +472,6 @@ class SentimentAnalyzer:
         ax: Axes | None = None,
     ) -> Axes:
         """Plot the distribution of the continuous sentiment score."""
-        # TODO (après plots.py): ne conserver ici aucun code Matplotlib.
         from .plots import plot_score_distribution
 
         return plot_score_distribution(predictions, bins=bins, ax=ax)
@@ -489,7 +485,6 @@ class SentimentAnalyzer:
         ax: Axes | None = None,
     ) -> Axes:
         """Plot average sentiment over time."""
-        # TODO (après plots.py): ne conserver ici aucun code Pandas/Matplotlib.
         from .plots import plot_timeline
 
         return plot_timeline(predictions, date_col=date_col, freq=freq, ax=ax)
@@ -502,7 +497,6 @@ class SentimentAnalyzer:
         ax: Axes | None = None,
     ) -> Axes:
         """Plot an evaluation report's confusion matrix."""
-        # TODO (après plots.py): garder cette méthode comme simple façade.
         from .plots import plot_confusion_matrix
 
         return plot_confusion_matrix(report, normalize=normalize, ax=ax)
