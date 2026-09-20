@@ -15,8 +15,7 @@ SENTIMENT_LABELS: tuple[SentimentLabel, ...] = (
     "positive",
 )
 
-# Contrat tabulaire public. Le définir une seule fois ici évite que analyzer,
-# stats et plots divergent lors de l'implémentation.
+# Shared output schema for prediction, statistics, and plotting.
 PREDICTION_COLUMNS: tuple[str, ...] = (
     "text",
     "label",
@@ -59,9 +58,9 @@ class Prediction:
 class EvaluationReport:
     """Metrics produced by an evaluation against known labels.
 
-    ``per_class`` doit avoir les classes en index et les colonnes
-    ``precision``, ``recall``, ``f1-score`` et ``support``.
-    ``confusion_matrix`` suit le même ordre que ``labels`` sur ses deux axes.
+    ``per_class`` has labels as its index and ``precision``, ``recall``,
+    ``f1-score``, and ``support`` as columns. Both axes of
+    ``confusion_matrix`` follow the order in ``labels``.
     """
 
     accuracy: float

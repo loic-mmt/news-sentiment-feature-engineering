@@ -9,16 +9,12 @@ from matplotlib.axes import Axes
 from .results import SENTIMENT_LABELS, EvaluationReport
 from .stats import validate_prediction_frame
 
-# Palette stable dans toute la librairie : rouge, gris, vert.
+# Stable palette shared by all plots.
 SENTIMENT_COLORS: dict[str, str] = {
     "negative": "#C44E52",
     "neutral": "#8C8C8C",
     "positive": "#55A868",
 }
-
-# Ordre conseillé : _get_ax -> plot_labels -> plot_score_distribution ->
-# plot_confusion_matrix -> plot_timeline. Aucun tracé ne doit appeler show/savefig.
-
 
 def _get_ax(ax: Axes | None, *, figsize: tuple[float, float]) -> Axes:
     """Return the supplied axis or create a new one."""

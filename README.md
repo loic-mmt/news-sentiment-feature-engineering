@@ -1,129 +1,166 @@
 # News Sentiment
 
-Mini-librairie Python pour analyser le sentiment de textes financiers anglais avec
-FinBERT. Elle retourne labels, probabilités, confiance, score continu, statistiques,
-métriques d'évaluation et graphiques Matplotlib.
+Bibliothèque Python pour transformer des news financières en features de sentiment
+par ticker et instant de décision. Elle collecte des flux RSS/Atom configurés par
+l'utilisateur, interroge éventuellement Alpha Vantage, ou accepte un `DataFrame`
+existant. Le texte est scoré avec le checkpoint FinBERT pré-entraîné
+[`yiyanghkust/finbert-tone`](https://huggingface.co/yiyanghkust/finbert-tone).
 
-Modèle par défaut : [`yiyanghkust/finbert-tone`](https://huggingface.co/yiyanghkust/finbert-tone).
+La librairie ne fournit ni flux prédéfini, ni scraping de pages, ni modèle de
+rendements ou de trading. Python 3.10 ou supérieur.
 
 ## Installation
 
-Python 3.11 ou supérieur :
+Depuis GitHub :
 
 ```bash
+python -m pip install "news-sentiment[news] @ git+https://github.com/loic-mmt/news-sentiment-feature-engineering.git"
+```
+
+Pour contribuer depuis un clone :
+
+```bash
+git clone https://github.com/loic-mmt/news-sentiment-feature-engineering.git
+cd news-sentiment-feature-engineering
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+python -m pip install -e ".[news,dev]"
 ```
 
-Alternative avec fichier de dépendances :
+L'extra `[news]` installe `feedparser` pour RSS/Atom et `pyarrow` pour Parquet.
+La prédiction seule fonctionne sans cet extra. Le premier appel à
+`SentimentAnalyzer()` télécharge le checkpoint Hugging Face ; ses poids ne sont
+pas inclus dans le dépôt.
+
+Ce projet n'est **pas publié sur PyPI**. `pip install news-sentiment` sans URL
+installe [un autre projet](https://pypi.org/project/NewsSentiment/).
+
+## RSS → FinBERT → features
+
+```python
+import pandas as pd
+from news_sentiment import (
+    SentimentAnalyzer,
+    attach_sentiment,
+    build_sentiment_features,
+    fetch_rss,
+    save_news,
+)
+
+news = fetch_rss(
+    ["https://votre-source.example/finance.xml"],
+    ticker_aliases={"AAPL": ["Apple"], "MSFT": ["Microsoft"]},
+)
+stored = save_news(news, "data/news.parquet")
+scored = attach_sentiment(stored, SentimentAnalyzer())
+decision_points = pd.DataFrame({
+    "ticker": ["AAPL", "MSFT"],
+    "decision_at": [pd.Timestamp.now(tz="UTC")] * 2,
+})
+features = build_sentiment_features(scored, decision_points)
+print(features)
+```
+
+`fetch_rss()` utilise titres et résumés des flux, sans télécharger les articles.
+Les tickers sont associés uniquement par les alias fournis ; un article peut
+produire plusieurs lignes ou rester sans ticker. `save_news()` fusionne les
+collectes par `(news_id, ticker)` et conserve le premier `available_at`.
+
+`decision_points` définit exactement les paires `(ticker, decision_at)` en sortie.
+Pour chaque paire, seules les news observées dans
+`(decision_at - lookback, decision_at]` contribuent aux agrégats. Par défaut,
+`lookback="24h"`, `short_lookback="6h"` et `half_life="6h"`. Une paire sans
+news dans sa fenêtre conserve `news_count=0` ; les mesures non définies sont
+manquantes. `hours_since_last_news` peut rester défini grâce à une news plus
+ancienne. Toutes les dates fournies par l'appelant doivent avoir un fuseau ;
+les résultats sont normalisés en UTC.
+
+Un [exemple exécutable](examples/realtime_features.py) lit les URL RSS, un JSON
+d'alias et un CSV de décisions, puis écrit news et features en Parquet. Les
+colonnes et contrats complets figurent dans la [documentation API](docs/api.md).
+
+## Alpha Vantage et quota local
+
+Le connecteur `fetch_alpha_vantage()` utilise l'endpoint
+[`NEWS_SENTIMENT`](https://www.alphavantage.co/documentation/). Ses colonnes
+`av_*` sont des métadonnées du fournisseur, distinctes des scores FinBERT.
+Un filtre `tickers="AAPL,MSFT"` demande des articles mentionnant **les deux**
+tickers ; pour deux recherches indépendantes, faire deux appels.
+
+La clé doit être passée via `api_key=` ou la variable d'environnement
+`ALPHAVANTAGE_API_KEY` (majuscules). La librairie ne charge pas `.env` ou
+`secrets.env` automatiquement. Exemple dans un projet consommateur :
 
 ```bash
-pip install -r requirements.txt
-pip install -e . --no-deps
+python -m pip install python-dotenv
 ```
 
-Le premier `SentimentAnalyzer()` télécharge le checkpoint Hugging Face. Les lancements
-suivants utilisent le cache local. Le CPU est choisi par défaut sans GPU CUDA disponible.
+```python
+from dotenv import load_dotenv
+from news_sentiment import fetch_alpha_vantage, save_news
 
-## Utilisation rapide
+load_dotenv(".env")
+news = fetch_alpha_vantage(tickers="AAPL", limit=100)
+stored = save_news(news, "data/news.parquet")
+```
+
+Utiliser [.env.example](.env.example) comme modèle et exclure le fichier de clé
+du dépôt consommateur. Pour la CLI, la variable doit être disponible dans **son**
+processus : un `load_dotenv()` lancé dans un autre processus ne suffit pas.
+
+```bash
+news-sentiment alpha-vantage quota
+```
+
+Cette commande lit le compteur SQLite local, sans appel réseau. Chaque tentative
+d'appel est comptée avant l'envoi, même en cas d'échec. Le plafond quotidien par
+défaut est de 25 appels sur 24 h glissantes ; celui de 25 appels sur 1 h est une
+**politique locale**, pas une limite horaire publiée par Alpha Vantage. Les
+plafonds sont configurables. Le compteur ne connaît pas les appels faits ailleurs
+et n'est donc pas un solde fournisseur garanti. Voir la [documentation API](docs/api.md).
+
+## Autres fonctions
+
+`SentimentAnalyzer.predict_one()` retourne label, probabilités, confiance et
+score continu `P(positive) - P(negative)`. `predict()` traite un lot ;
+`summarize()`, `evaluate()` et les fonctions `plot_*` couvrent description,
+évaluation sur labels réels et visualisation. Elles n'entraînent pas FinBERT.
 
 ```python
 from news_sentiment import SentimentAnalyzer
 
-analyzer = SentimentAnalyzer()
-prediction = analyzer.predict_one("The company raised its annual guidance.")
-
-print(prediction.label)
-print(prediction.confidence)
-print(prediction.probabilities)
-print(prediction.score)
-```
-
-`score` vaut `P(positive) - P(negative)` et reste compris entre -1 et 1.
-
-## Analyse d'un lot
-
-```python
-texts = [
-    "The company raised its annual guidance.",
-    "Revenue remained unchanged from last year.",
-    "The group reported a sharp decline in quarterly earnings.",
-]
-
-predictions = analyzer.predict(texts, batch_size=16)
-print(predictions)
-print(analyzer.summarize(predictions, confidence_threshold=0.60))
-```
-
-Colonnes produites :
-
-| Colonne | Contenu |
-|---|---|
-| `text` | Texte original |
-| `label` | `negative`, `neutral` ou `positive` |
-| `confidence` | Plus grande probabilité |
-| `p_negative` | Probabilité négative |
-| `p_neutral` | Probabilité neutre |
-| `p_positive` | Probabilité positive |
-| `sentiment_score` | `p_positive - p_negative` |
-
-## Évaluation
-
-Des labels réels sont requis :
-
-```python
-y_true = ["positive", "neutral", "negative"]
-report = analyzer.evaluate(predictions, y_true)
-
-print(report.accuracy)
-print(report.macro_f1)
-print(report.per_class)
-print(report.confusion_matrix)
-```
-
-## Graphiques
-
-Les fonctions retournent un `matplotlib.axes.Axes`. Elles n'affichent et ne sauvegardent
-rien automatiquement.
-
-```python
-import matplotlib.pyplot as plt
-import pandas as pd
-
-analyzer.plot_labels(predictions, proportions=True)
-analyzer.plot_score_distribution(predictions)
-analyzer.plot_confusion_matrix(report, normalize=True)
-
-predictions["published_at"] = pd.to_datetime(
-    ["2026-08-01", "2026-08-02", "2026-08-03"]
+prediction = SentimentAnalyzer().predict_one(
+    "The company raised its annual guidance."
 )
-analyzer.plot_timeline(predictions, date_col="published_at", freq="D")
-
-plt.show()
+print(prediction.label, prediction.score)
 ```
 
-## Device et configuration
+## Vérification
 
-```python
-cpu_analyzer = SentimentAnalyzer(device="cpu")
-gpu_analyzer = SentimentAnalyzer(device="cuda:0", batch_size=64, max_length=512)
+Après installation avec `.[news,dev]`, `python -m pytest -q` lance les tests
+hors ligne. La CI les exécute sous Python 3.10 à 3.13 et vérifie le paquet
+construit. Deux tests d'intégration sont opt-in :
+
+```bash
+RUN_FINBERT_SMOKE=1 python -m pytest -q -m slow
+RUN_ALPHA_VANTAGE_SMOKE=1 python -m pytest -q --tb=line -m slow tests/test_alpha_vantage.py
 ```
 
-Valeurs acceptées pour `device` : `None`, `-1`, index GPU entier, `"cpu"`,
-`"cuda"` ou `"cuda:<index>"`.
+Le second exige `ALPHAVANTAGE_API_KEY` dans l'environnement et consomme une
+tentative dans le quota local. Sur une installation Python macOS sans certificats
+CA configurés, `CERTIFICATE_VERIFY_FAILED` nécessite de corriger le magasin de
+certificats ou de définir `SSL_CERT_FILE` avant les appels HTTPS.
 
-## Données
+## Limites et licence
 
-Aucune donnée nécessaire pour faire une prédiction. Pour évaluation annotée ou série
-temporelle, voir [DATA.md](DATA.md). Les enseignements tirés des expériences du cours,
-les critères de fine-tuning et les pièges d'évaluation sont conservés dans
-[MODEL_NOTES.md](MODEL_NOTES.md).
+- FinBERT fourni ici cible des textes financiers anglais ; ses probabilités ne
+  sont pas calibrées sur vos sources.
+- Pas de calendrier de marché, d'heure de décision imposée ni de backtest.
+- Le fichier Parquet suppose une seule écriture simultanée ; coordonner plusieurs
+  producteurs en amont.
+- `attach_sentiment()` re-score tout le lot fourni ; conserver les scores déjà
+  calculés si le volume ou le coût d'inférence le justifie.
 
-## Limites du MVP
-
-- Textes financiers anglais.
-- Aucun entraînement ou fine-tuning.
-- Aucun serveur HTTP ou stockage.
-- Probabilités non calibrées sur les données propres à l'utilisateur.
-- Les résultats dépendent du domaine et du checkpoint choisi.
+Code sous [licence MIT](LICENSE). Les poids du modèle et les données des
+fournisseurs ne sont pas redistribués ; vérifier leurs propres conditions
+d'utilisation.

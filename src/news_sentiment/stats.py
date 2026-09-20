@@ -16,11 +16,6 @@ from .results import (
     SentimentLabel,
 )
 
-# Ordre conseillé : validate_prediction_frame -> summarize -> evaluate.
-# Les métriques de classification du cours sont illustrées dans
-# course/03_sentiment_evolution.py et course/04_bert_finetuning.py.
-
-
 class SentimentSummary(TypedDict):
     """Schema returned by ``summarize``."""
 
