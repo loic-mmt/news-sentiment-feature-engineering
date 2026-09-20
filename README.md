@@ -14,7 +14,7 @@ rendements ou de trading. Python 3.10 ou supérieur.
 Depuis GitHub :
 
 ```bash
-python -m pip install "news-sentiment[news] @ git+https://github.com/loic-mmt/news-sentiment-feature-engineering.git"
+python -m pip install "news-sentiment-feature-engineering[news] @ git+https://github.com/loic-mmt/news-sentiment-feature-engineering.git"
 ```
 
 Pour contribuer depuis un clone :
@@ -32,8 +32,9 @@ La prédiction seule fonctionne sans cet extra. Le premier appel à
 `SentimentAnalyzer()` télécharge le checkpoint Hugging Face ; ses poids ne sont
 pas inclus dans le dépôt.
 
-Ce projet n'est **pas publié sur PyPI**. `pip install news-sentiment` sans URL
-installe [un autre projet](https://pypi.org/project/NewsSentiment/).
+Ce projet n'est **pas publié sur PyPI** : utilisez l'URL GitHub ci-dessus, pas
+`pip install news-sentiment-feature-engineering` seul. Le nom d'import reste
+`news_sentiment` et la commande CLI reste `news-sentiment`.
 
 ## RSS → FinBERT → features
 
