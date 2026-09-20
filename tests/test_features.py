@@ -127,3 +127,23 @@ def test_empty_news_keeps_explicit_decision_grid(news):
     features = build_sentiment_features(scored, points)
     assert features.loc[0, "news_count"] == 0
     assert pd.isna(features.loc[0, "hours_since_last_news"])
+
+
+def test_cutoff_equality_can_be_excluded_and_last_contributor_is_auditable(news):
+    scored = attach_sentiment(news, FakeAnalyzer())
+    boundary = scored.iloc[[2]].copy()
+    boundary["available_at"] = pd.Timestamp("2026-09-18T10:00:00Z")
+    scored = pd.concat([scored.iloc[:2], boundary], ignore_index=True)
+    points = pd.DataFrame({
+        "ticker": ["AAPL"],
+        "decision_at": [pd.Timestamp("2026-09-18T10:00:00Z")],
+    })
+    inclusive = build_sentiment_features(scored, points)
+    strict = build_sentiment_features(scored, points, include_at_cutoff=False)
+    assert inclusive.loc[0, "news_count"] == 3
+    assert inclusive.loc[0, "last_contributing_available_at"] == points.loc[0, "decision_at"]
+    assert strict.loc[0, "news_count"] == 2
+    assert strict.loc[0, "last_contributing_available_at"] == pd.Timestamp("2026-09-18T09:00:00Z")
+    assert strict.loc[0, "coverage_status"] == "unknown"
+    with pytest.raises(TypeError, match="include_at_cutoff"):
+        build_sentiment_features(scored, points, include_at_cutoff="false")

@@ -65,6 +65,8 @@ def test_fetch_normalizes_multiticker_and_preserves_first_observation(monkeypatc
     assert pd.isna(news.loc[2, "ticker"])
     assert news.loc[0, "published_at"] == pd.Timestamp("2026-09-18T08:00:00Z")
     assert news.loc[0, "available_at"] == first_at
+    assert news["availability_kind"].eq("pipeline_observed").all()
+    assert news["availability_reference"].eq("alpha_vantage:NEWS_SENTIMENT").all()
     assert news.loc[0, "url"] == "https://example.test/story"
     assert news.loc[0, "text"] == "Apple and Microsoft rise. Stocks gain after results."
     assert news.loc[1, "av_relevance_score"] == pytest.approx(0.4)

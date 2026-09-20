@@ -45,6 +45,8 @@ def test_fetch_rss_atom_aliases_and_unassigned(monkeypatch):
     assert set(fetched["ticker"].dropna()) == {"AAPL", "MSFT"}
     assert fetched["ticker"].isna().sum() == 1
     assert fetched["available_at"].eq(observed).all()
+    assert fetched["availability_kind"].eq("pipeline_observed").all()
+    assert set(fetched["availability_reference"]) == set(payloads)
     assert fetched.loc[0, "published_at"] == pd.Timestamp("2026-09-18T08:00:00Z")
     assert fetched.loc[0, "url"] == "https://example.test/one"
     assert "<p>" not in fetched.loc[0, "text"]

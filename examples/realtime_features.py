@@ -17,7 +17,7 @@ import pandas as pd
 from news_sentiment import (
     SentimentAnalyzer,
     attach_sentiment,
-    build_sentiment_features,
+    export_sentiment_features,
     fetch_rss,
     save_news,
 )
@@ -30,17 +30,28 @@ def main() -> None:
     parser.add_argument("--decisions", type=Path, required=True, help="CSV with ticker,decision_at")
     parser.add_argument("--news-store", type=Path, default=Path("data/news.parquet"))
     parser.add_argument("--features-out", type=Path, default=Path("data/features.parquet"))
+    parser.add_argument("--coverage", type=Path, help="Separate coverage journal in Parquet")
+    parser.add_argument("--required-source", action="append", help="Source identifier; repeatable")
+    parser.add_argument("--exclude-cutoff", action="store_true", help="Require available_at < decision_at")
     args = parser.parse_args()
+    if bool(args.coverage) != bool(args.required_source):
+        parser.error("--coverage and at least one --required-source must be provided together")
 
     aliases = json.loads(args.aliases.read_text(encoding="utf-8"))
     decision_points = pd.read_csv(args.decisions)
     fetched = fetch_rss(args.feed, ticker_aliases=aliases)
     stored = save_news(fetched, args.news_store)
-    scored = attach_sentiment(stored, SentimentAnalyzer())
-    features = build_sentiment_features(scored, decision_points)
-    args.features_out.parent.mkdir(parents=True, exist_ok=True)
-    features.to_parquet(args.features_out, engine="pyarrow", index=False)
-    print(f"Saved {len(features)} feature rows to {args.features_out}")
+    analyzer = SentimentAnalyzer()
+    scored = attach_sentiment(stored, analyzer)
+    coverage = pd.read_parquet(args.coverage) if args.coverage else None
+    features = export_sentiment_features(
+        scored, decision_points, args.features_out,
+        checkpoint=analyzer.model_name,
+        input_identifiers={"news_store": args.news_store.name, "decisions": args.decisions.name},
+        coverage=coverage, required_sources=args.required_source,
+        include_at_cutoff=not args.exclude_cutoff,
+    )
+    print(f"Saved {len(features)} feature rows to {args.features_out} and its manifest")
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ NEWS_COLUMNS = (
     "title",
     "text",
 )
+AVAILABILITY_COLUMNS = ("availability_kind", "availability_reference")
 
 
 class _TextExtractor(HTMLParser):
@@ -105,7 +106,7 @@ def _alias_patterns(
 
 
 def _empty_news() -> pd.DataFrame:
-    frame = pd.DataFrame(columns=NEWS_COLUMNS)
+    frame = pd.DataFrame(columns=(*NEWS_COLUMNS, *AVAILABILITY_COLUMNS))
     for column in ("published_at", "available_at"):
         frame[column] = pd.Series(dtype="datetime64[ns, UTC]")
     return frame
@@ -207,6 +208,8 @@ def fetch_rss(
                         "ticker": ticker,
                         "title": title,
                         "text": text,
+                        "availability_kind": "pipeline_observed",
+                        "availability_reference": feed_url,
                     }
                 )
 
@@ -214,7 +217,7 @@ def fetch_rss(
         raise RuntimeError("all RSS feeds failed: " + "; ".join(failures))
     if not records:
         return _empty_news()
-    news = pd.DataFrame.from_records(records, columns=NEWS_COLUMNS)
+    news = pd.DataFrame.from_records(records, columns=(*NEWS_COLUMNS, *AVAILABILITY_COLUMNS))
     return news.drop_duplicates(subset=["news_id", "ticker"], keep="first").reset_index(drop=True)
 
 
@@ -250,7 +253,8 @@ def _validated_news(news: pd.DataFrame) -> pd.DataFrame:
 def save_news(news: pd.DataFrame, path: str | Path) -> pd.DataFrame:
     """Atomically merge news into a local Parquet file and return all stored rows.
 
-    Re-observing an article/ticker pair never moves its availability time later.
+    Re-observing an article/ticker pair never changes its stored availability,
+    even if a later replay claims an earlier timestamp.
     This operation assumes one writer per file.
     """
     try:
@@ -269,7 +273,8 @@ def save_news(news: pd.DataFrame, path: str | Path) -> pd.DataFrame:
     )
     combined = pd.concat([existing, incoming], ignore_index=True)
     if not combined.empty:
-        combined = combined.sort_values("available_at", kind="stable")
+        # Persisted observations take precedence over any later import or replay,
+        # even when a replay claims an earlier availability timestamp.
         combined = combined.drop_duplicates(subset=["news_id", "ticker"], keep="first")
         combined = combined.reset_index(drop=True)
 

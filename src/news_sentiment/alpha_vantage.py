@@ -15,12 +15,13 @@ from urllib.request import Request, urlopen
 
 import pandas as pd
 
-from .news import NEWS_COLUMNS, _canonical_url, _plain_text, _utc_timestamp
+from .news import AVAILABILITY_COLUMNS, NEWS_COLUMNS, _canonical_url, _plain_text, _utc_timestamp
 from .quota import AlphaVantageQuota, DEFAULT_DAILY_LIMIT, DEFAULT_HOURLY_LIMIT
 
 
 ALPHA_VANTAGE_COLUMNS = (
     *NEWS_COLUMNS,
+    *AVAILABILITY_COLUMNS,
     "av_relevance_score",
     "av_ticker_sentiment_score",
     "av_ticker_sentiment_label",
@@ -200,6 +201,8 @@ def fetch_alpha_vantage(
                     "ticker": ticker,
                     "title": title,
                     "text": text,
+                    "availability_kind": "pipeline_observed",
+                    "availability_reference": "alpha_vantage:NEWS_SENTIMENT",
                     "av_relevance_score": _number(tag.get("relevance_score")),
                     "av_ticker_sentiment_score": _number(tag.get("ticker_sentiment_score")),
                     "av_ticker_sentiment_label": tag.get("ticker_sentiment_label"),

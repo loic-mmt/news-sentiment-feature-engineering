@@ -27,7 +27,7 @@ jobs:
         run: python -m pip install -e ".[news,dev]"
       - name: Verify public imports and CLI
         run: |
-          python -c "from news_sentiment import SentimentAnalyzer, fetch_rss, fetch_alpha_vantage, attach_sentiment, build_sentiment_features"
+          python -c "from news_sentiment import SentimentAnalyzer, fetch_rss, fetch_alpha_vantage, import_historical_news, save_coverage, attach_sentiment, build_sentiment_features, export_sentiment_features"
           news-sentiment alpha-vantage quota --help
       - name: Run offline tests
         run: python -m pytest -q
