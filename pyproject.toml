@@ -1,13 +1,25 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "news-sentiment"
+name = "news-sentiment-feature-engineering"
 version = "0.1.0"
-description = "Minimal financial news sentiment analysis library"
+description = "FinBERT sentiment features from financial news"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "matplotlib>=3.8",
     "numpy>=1.26",
@@ -19,9 +31,18 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+news = ["feedparser>=6.0", "pyarrow>=15"]
+
+[project.scripts]
+news-sentiment = "news_sentiment.cli:main"
+
+[project.urls]
+Repository = "https://github.com/loic-mmt/news-sentiment-feature-engineering"
+Issues = "https://github.com/loic-mmt/news-sentiment-feature-engineering/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: opt-in integration test that may use an external model or API"]
