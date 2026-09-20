@@ -27,16 +27,6 @@ _DIRECT_LABELS: dict[str, SentimentLabel] = {
     "positive": "positive",
 }
 
-# Ordre conseillé pour implémenter ce module :
-# 1. _materialize_texts
-# 2. _normalize_label
-# 3. _prediction_from_scores
-# 4. _load_classifier
-# 5. predict_one puis predict
-# Référence principale : course/03_sentiment_evolution.py::get_finbert_predictions
-# Exemple d'inférence en lot : course/07_news_return_signals.py::score_sentiment_finbert
-
-
 class SentimentAnalyzer:
     """Analyze financial sentiment with a Hugging Face classification model.
 
@@ -92,7 +82,7 @@ class SentimentAnalyzer:
     def _load_classifier(self) -> Any:
         """Create and return the configured Transformers pipeline."""
         try:
-            from transformers import pipeline
+            from transformers import BertConfig, BertTokenizer, pipeline
         except ImportError as exc:
             raise ImportError(
                 "transformers is required to load the sentiment classifier"
@@ -151,12 +141,20 @@ class SentimentAnalyzer:
                     f"found {device_count} CUDA device(s)"
                 )
 
-        classifier = pipeline(
-            task="sentiment-analysis",
-            model=self.model_name,
-            tokenizer=self.model_name,
-            device=resolved_device,
-        )
+        pipeline_kwargs: dict[str, Any] = {
+            "task": "sentiment-analysis",
+            "model": self.model_name,
+            "tokenizer": self.model_name,
+            "device": resolved_device,
+        }
+        if self.model_name == DEFAULT_MODEL:
+            # This legacy checkpoint declares a BERT architecture but has no
+            # `model_type` or tokenizer metadata. Transformers 5 no longer
+            # infers either from the repository name, so provide both explicitly.
+            pipeline_kwargs["config"] = BertConfig.from_pretrained(self.model_name)
+            pipeline_kwargs["tokenizer"] = BertTokenizer.from_pretrained(self.model_name)
+
+        classifier = pipeline(**pipeline_kwargs)
 
         config = getattr(getattr(classifier, "model", None), "config", None)
         id2label = getattr(config, "id2label", None)
@@ -283,8 +281,7 @@ class SentimentAnalyzer:
         raw_scores: Sequence[dict[str, Any]],
     ) -> Prediction:
         """Build a normalized ``Prediction`` from one model response."""
-        # Format attendu de raw_scores avec top_k=None :
-        # [{"label": "Neutral", "score": 0.80}, ... trois éléments au total].
+        # With top_k=None, one score dictionary is returned per label.
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text.strip():

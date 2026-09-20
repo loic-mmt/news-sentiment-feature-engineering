@@ -1,16 +1,38 @@
-"""TODO checklist for plots.py."""
+"""Non-interactive tests for the four plotting helpers."""
 
-# TODO 1: forcer le backend Matplotlib Agg dans la configuration des tests, pas
-#         dans le module de production.
-# TODO 2: vérifier que _get_ax réutilise l'axe fourni et crée un Axes sinon.
-# TODO 3: vérifier que plot_labels crée toujours trois barres dans l'ordre stable,
-#         y compris lorsqu'une classe est absente.
-# TODO 4: vérifier counts et proportions séparément.
-# TODO 5: vérifier le nombre de bins, xlim=(-1, 1) et la ligne verticale à zéro
-#         de plot_score_distribution.
-# TODO 6: vérifier l'agrégation journalière et hebdomadaire de plot_timeline ainsi
-#         que les erreurs de colonne/date/fréquence.
-# TODO 7: vérifier les modes brut et normalisé de plot_confusion_matrix, y compris
-#         une ligne dont la somme vaut zéro.
-# TODO 8: vérifier que toutes les fonctions retournent un Axes, ne mutent pas les
-#         entrées et ne créent aucun fichier ; éviter les comparaisons pixel à pixel.
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from news_sentiment import (
+    evaluate,
+    plot_confusion_matrix,
+    plot_labels,
+    plot_score_distribution,
+    plot_timeline,
+)
+
+
+def test_plots_return_axes_without_mutating_input():
+    predictions = pd.DataFrame(
+        [["good", "positive", 0.8, 0.1, 0.1, 0.8, 0.7, "2026-01-01"]],
+        columns=[
+            "text", "label", "confidence", "p_negative", "p_neutral",
+            "p_positive", "sentiment_score", "published_at",
+        ],
+    )
+    original = predictions.copy(deep=True)
+    report = evaluate(predictions, ["positive"])
+    axes = [
+        plot_labels(predictions),
+        plot_score_distribution(predictions),
+        plot_timeline(predictions, date_col="published_at"),
+        plot_confusion_matrix(report, normalize=True),
+    ]
+    assert all(ax.figure is not None for ax in axes)
+    assert len(axes[0].patches) == 3
+    pd.testing.assert_frame_equal(predictions, original)
+    plt.close("all")
